@@ -1079,13 +1079,20 @@ impl DwgDocumentBuilder {
                 })
                 .collect();
 
-            // The BLOCK begin marker stores the definition's full name
-            // ("*U25", "*Paper_Space3") where the record keeps only the bare
-            // prefix. Reconstructing the suffix from control order drifts
-            // past null or erased slots (#55, #66), so the marker's name wins
-            // whenever it extends the record's own.
+            // Recover paper-space suffixes from the BLOCK begin marker;
+            // control order can drift past null or erased slots (#55, #66).
+            // Bare anonymous records instead take AutoCAD's reopen numbering
+            // below, since their marker suffix can be stale after evaluation.
             for (idx, h, name) in &block_info {
                 if !name.starts_with('*') {
+                    continue;
+                }
+                // Bare anonymous records are renumbered from live control
+                // entries when AutoCAD opens the database. Their BLOCK marker
+                // may retain an older evaluation suffix (e.g. *U18 versus *U2).
+                // Keep those bare until anonymous_block_names resolves them;
+                // marker suffixes remain useful for paper-space records.
+                if name.len() == 2 {
                     continue;
                 }
                 let ParsedEntry::Block(_, ref data) = parsed_entries[*idx] else {

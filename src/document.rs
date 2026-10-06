@@ -3508,6 +3508,12 @@ impl CadDocument {
             })
             .collect();
         for record in self.block_records.iter_mut() {
+            // Preserve an explicitly saved self-reference. AutoCAD leaves this
+            // unresolved when the drawing is loaded as an xref; callers can use
+            // the Layout's reverse link when opening it as the root drawing.
+            if record.layout == record.handle {
+                continue;
+            }
             if !matches!(self.objects.get(&record.layout), Some(ObjectType::Layout(_))) {
                 record.layout = owners.get(&record.handle).copied().unwrap_or(Handle::NULL);
             }

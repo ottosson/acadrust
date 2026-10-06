@@ -223,6 +223,31 @@ fn rotation_angles_above_pi_are_not_folded() {
 }
 
 #[test]
+fn stale_marker_suffixes_do_not_override_autocad_reopen_names() {
+    let doc = DwgReader::from_file(fixture("LOOKUP_REOPEN"))
+        .unwrap()
+        .read()
+        .unwrap();
+    for (handle, expected) in [
+        (0x254, "*U2"),
+        (0x38C, "*U3"),
+        (0x395, "*U4"),
+        (0x39E, "*U5"),
+    ] {
+        let EntityType::Insert(insert) = doc.get_entity(acadrust::Handle::new(handle)).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(insert.block_name, expected);
+        let block = doc.block_records.get(expected).unwrap();
+        let Some(EntityType::Block(marker)) = doc.get_entity(block.block_entity_handle) else {
+            panic!()
+        };
+        assert_eq!(marker.name, expected);
+    }
+}
+
+#[test]
 fn reflected_rotation_keeps_its_parameter_orientation_and_rejects_broken_caches() {
     use acadrust::{objects::*, Handle};
     let mut doc = DwgReader::from_file(fixture("ROTATION_270"))
