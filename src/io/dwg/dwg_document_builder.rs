@@ -1035,6 +1035,37 @@ impl DwgDocumentBuilder {
             let active_model = document.header.model_space_block_handle;
             let active_paper = document.header.paper_space_block_handle;
 
+            // Down-saved dynamic definitions use an anonymous table name and
+            // preserve their public name in AcDbDynamicBlockTrueName XData.
+            // Restore it before deduplication and INSERT name resolution.
+            let true_name_app = parsed_entries.iter().find_map(|entry| match entry {
+                ParsedEntry::AppId(handle, data) if data.name == "AcDbDynamicBlockTrueName" => Some(*handle),
+                _ => None,
+            });
+            if let Some(app) = true_name_app {
+                for entry in &mut parsed_entries {
+                    if let ParsedEntry::Block(handle, data) = entry {
+                        if !data.name.starts_with("*U") { continue; }
+                        let name = document.eed_by_handle.get(&Handle::from(*handle))
+                            .and_then(|records| records.iter().find(|(h, _)| *h == app))
+                            .and_then(|(_, bytes)| crate::io::dwg::eed_codec::decode_values(bytes, self.obj_reader.version().r2007_plus(), |_| None))
+                            .and_then(|values| values.into_iter().find_map(|v| match v {
+                                crate::xdata::XDataValue::String(s) if !s.is_empty() && !s.starts_with('*') => Some(s), _ => None,
+                            }));
+                        if let Some(name) = name {
+                            // Anonymous cached copies may retain the same XData.
+                            // A live named definition already owns that identity.
+                            if maps.blocks.iter().any(|(h, n)| h != handle && n.eq_ignore_ascii_case(&name)) {
+                                continue;
+                            }
+                            data.name = name.clone();
+                            data.anonymous = false;
+                            maps.blocks.insert(*handle, name);
+                        }
+                    }
+                }
+            }
+
             // Collect (index, handle, name) for all Block entries
             let block_info: Vec<(usize, u64, String)> = parsed_entries
                 .iter()

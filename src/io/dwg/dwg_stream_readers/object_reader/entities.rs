@@ -4363,9 +4363,7 @@ pub fn read_attribute_definition(
             let _application = reader.read_handle();
             let _unknown = reader.read_bit_short();
         }
-        if !mtext.value.is_empty() {
-            text_data.value = mtext.value.clone();
-        }
+        text_data.value = mtext.value.clone();
         Some(mtext)
     } else {
         None
@@ -4430,9 +4428,7 @@ pub fn read_attribute_entity(
             let _application = reader.read_handle();
             let _unknown = reader.read_bit_short();
         }
-        if !mtext.value.is_empty() {
-            text_data.value = mtext.value.clone();
-        }
+        text_data.value = mtext.value.clone();
         Some(mtext)
     } else {
         None
