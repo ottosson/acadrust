@@ -3,6 +3,7 @@
 pub mod entities;
 pub mod header;
 mod import_handles;
+mod import_layouts;
 pub(crate) mod tables;
 
 pub(crate) type ImportFontResolver = dyn Fn(&str) -> String + Send + Sync;
@@ -229,6 +230,7 @@ pub(crate) fn read_document(
     let dxf = records_to_dxf(&entities, &blocks, &table_records, &handles);
     let mut document = DxfReader::from_reader(Cursor::new(dxf))?.read()?;
     handles.apply_layouts(&mut document)?;
+    import_layouts::apply_defaults(&mut document);
     document.version = DxfVersion::AC1009;
     document.maintenance_version = header.maintenance_version;
     header.apply_variables(&mut document.header, code_page_override)?;
