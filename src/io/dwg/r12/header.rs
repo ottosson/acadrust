@@ -138,11 +138,20 @@ pub struct R12Header {
 impl R12Header {
     /// Apply the variables stored in R12 without replacing references to
     /// dictionaries, layouts and other objects created by the importer.
-    pub(crate) fn apply_variables(&self, target: &mut HeaderVariables) -> Result<()> {
+    pub(crate) fn apply_variables(
+        &self,
+        target: &mut HeaderVariables,
+        code_page_override: Option<&str>,
+    ) -> Result<()> {
         let mut codec = Codec::reading(self.raw.clone());
         codec.encoding = crate::io::dxf::code_page::encoding_from_dwg_code_page(
             u16::from_le_bytes(self.raw[0x3f9..0x3fb].try_into().unwrap()),
         );
+        if let Some(encoding) =
+            code_page_override.and_then(crate::io::dxf::code_page::encoding_from_code_page)
+        {
+            codec.encoding = encoding;
+        }
         codec.pos = 0x5e;
         variables(
             &mut codec,
@@ -154,6 +163,13 @@ impl R12Header {
 }
 
 pub fn read_header(data: &[u8]) -> Result<R12Header> {
+    read_header_with_code_page(data, None)
+}
+
+pub(super) fn read_header_with_code_page(
+    data: &[u8],
+    code_page_override: Option<&str>,
+) -> Result<R12Header> {
     if data.len() < 0x6cd || !matches!(data.get(..6), Some(b"AC1009" | b"AD1009")) {
         return Err(DxfError::InvalidFormat("Invalid AC1009 header".into()));
     }
@@ -189,6 +205,11 @@ pub fn read_header(data: &[u8]) -> Result<R12Header> {
     let mut c = Codec::reading(data[..variables_end].to_vec());
     let page = u16::from_le_bytes(data[0x3F9..0x3FB].try_into().unwrap());
     c.encoding = crate::io::dxf::code_page::encoding_from_dwg_code_page(page);
+    if let Some(encoding) =
+        code_page_override.and_then(crate::io::dxf::code_page::encoding_from_code_page)
+    {
+        c.encoding = encoding;
+    }
     c.pos = 0x14;
     c.long(&mut header.layout.entities_start);
     c.long(&mut header.layout.entities_end);
@@ -561,7 +582,8 @@ fn variables(
     let mut page = crate::io::dxf::code_page::dwg_code_page_index(&h.code_page) as i16;
     c.short(&mut page);
     h.code_page = crate::io::dxf::code_page::dwg_code_page_name(page as u16).to_owned();
-    c.encoding = crate::io::dxf::code_page::encoding_from_dwg_code_page(page as u16);
+    // The caller selects the encoding before reading/writing any variables.
+    // Retain an explicit import override when passing the stored code-page field.
     c.point3(&mut h.model_space_ucs_origin);
     c.point3(&mut h.model_space_ucs_x_axis);
     c.point3(&mut h.model_space_ucs_y_axis);

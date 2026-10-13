@@ -8,6 +8,8 @@ pub(crate) mod tables;
 pub(crate) type ImportFontResolver = dyn Fn(&str) -> String + Send + Sync;
 
 #[cfg(test)]
+mod code_page_tests;
+#[cfg(test)]
 mod import_handles_tests;
 
 use std::io::Cursor;
@@ -20,7 +22,7 @@ use crate::types::DxfVersion;
 
 use self::entities::{decode_entities, encode_entities, EntityRecord, EntityTables};
 use self::header::{
-    read_header, write_auxheader, write_header, HeaderLayout, HeaderReferences, TableLocator,
+    write_auxheader, write_header, HeaderLayout, HeaderReferences, TableLocator,
     BLOCK_ENTITIES_BEGIN, BLOCK_ENTITIES_END, ENTITIES_BEGIN, ENTITIES_END, EXTRA_ENTITIES_BEGIN,
     EXTRA_ENTITIES_END,
 };
@@ -168,12 +170,12 @@ fn records_to_dxf(
 pub(crate) fn read_document(
     data: &[u8],
     font_resolver: Option<&ImportFontResolver>,
+    code_page_override: Option<&str>,
 ) -> Result<CadDocument> {
-    let header = read_header(data)?;
-    let mut table_records =
-        tables::decode_tables(data, &header.tables, header.variables.code_page.as_str())?;
+    let header = header::read_header_with_code_page(data, code_page_override)?;
+    let code_page = code_page_override.unwrap_or(header.variables.code_page.as_str());
+    let mut table_records = tables::decode_tables(data, &header.tables, code_page)?;
     let tables = ensure_table_defaults(tables::entity_tables(&table_records));
-    let code_page = header.variables.code_page.as_str();
     let entities = section_records(
         data,
         header.layout.entities_start,
@@ -229,7 +231,7 @@ pub(crate) fn read_document(
     handles.apply_layouts(&mut document)?;
     document.version = DxfVersion::AC1009;
     document.maintenance_version = header.maintenance_version;
-    header.apply_variables(&mut document.header)?;
+    header.apply_variables(&mut document.header, code_page_override)?;
     // R12 stores table indices in the header. Resolve them after importing
     // tables; the DXF bridge cannot infer these references from entity records.
     let table_name = |table: usize, index: i16| {
